@@ -1,7 +1,7 @@
 import os
 import random
 from collections import namedtuple
-
+from collections import deque
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.path import Path
@@ -111,8 +111,17 @@ class Board(object):
         Returns:
             bool: True if the input path is valid
         '''
+        ter = set(path)
+        if len(ter) != len(path):
+            return False
+        for i in range(len(path) - 1):
+            current = path[i]
+            second = path[i + 1]
+            neighbors = [neighbor.territory_id for neighbor in self.neighbors(current)]
+            if second not in neighbors:
+                return False
+        return True
 
-    
     def is_valid_attack_path(self, path):
         '''
         The rules of Risk state that when attacking, 
@@ -130,7 +139,17 @@ class Board(object):
         Returns:
             bool: True if the path is an attack path
         '''
-
+        if len(path) < 2:
+            return False
+        if not self.is_valid_path(path):
+            return False
+        first = self.owner(path[0])
+        valid = True
+        for ter in path[1:]:
+            if self.owner(ter) == first:
+                valid = False
+                break
+        return valid
 
     def cost_of_attack_path(self, path):
         '''
@@ -143,7 +162,14 @@ class Board(object):
         Returns:
             bool: the number of enemy armies in the path
         '''
-
+        enemies = 0
+        for i in range(len(path)):
+            if i == 0:
+                continue
+            ter = path[i]
+            soldiers = self.armies(ter)
+            enemies += soldiers
+        return enemies
 
     def shortest_path(self, source, target):
         '''
@@ -161,7 +187,24 @@ class Board(object):
         Returns:
             [int]: a valid path between source and target that has minimum length; this path is guaranteed to exist
         '''
-
+        sq = deque([(source, [])])
+        visited = set()
+        while True:
+            if not sq:
+                return None
+            current = sq.popleft()
+            location, presentp = current
+            if location == target:
+                final = presentp + [location]
+                return final
+            if location not in visited:
+                visited.add(location)
+                connected = risk.definitions.territory_neighbors[location]
+                for neighbor in connected:
+                    if neighbor not in visited:
+                        new = presentp.copy()
+                        new.append(location)
+                        sq.append((neighbor, new))
 
     def can_fortify(self, source, target):
         '''
@@ -176,7 +219,29 @@ class Board(object):
         Returns:
             bool: True if reinforcing the target from the source territory is a valid move
         '''
+        if source == target:
+            return True
+        pid = self.owner(source)
+        passed = set()
+        q = deque([source])
+        found = False
+        while not found and q:
+            current = q.popleft()
+            ist = current == target
+            if ist:
+                found = True
+                break
+            visited = current in passed
+            if not visited:
+                passed.add(current)
+                neighbors = risk.definitions.territory_neighbors[current]
+                for neighbor in neighbors:
+                    conquered = self.owner(neighbor) == pid
+                    gone = neighbor not in passed
 
+                    if conquered and gone:
+                        q.append(neighbor)
+        return found
 
     def cheapest_attack_path(self, source, target):
         '''
@@ -191,6 +256,26 @@ class Board(object):
         Returns:
             [int]: a list of territory_ids representing the valid attack path; if no path exists, then it returns None instead
         '''
+        if self.owner(source) == self.owner(target):
+            return None
+        storage = {source: [source]}
+        priority = {source: 0}
+        nodes = set()
+        while priority:
+            current, valor = min(priority.items(), key=lambda x: x[1])
+            del priority[current]
+            if current == target:
+                return storage[current]
+            if current not in nodes:
+                nodes.add(current)
+                adj = risk.definitions.territory_neighbors[current]
+                for adjn in adj:
+                    if self.owner(adjn) != self.owner(source) and adjn not in nodes:
+                        updated = storage[current] + [adjn]
+                        uppri = valor + self.armies(adjn)
+                        if adjn not in storage or uppri < priority.get(adjn, float('inf')):
+                            storage[adjn], priority[adjn] = updated, uppri
+        return None
 
 
     def can_attack(self, source, target):
@@ -202,7 +287,7 @@ class Board(object):
         Returns:
             bool: True if a valid attack path exists between source and target; else False
         '''
-
+        return self.cheapest_attack_path(source, target) is not None
 
     # ======================= #
     # == Continent Methods == #
