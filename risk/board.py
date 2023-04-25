@@ -283,7 +283,6 @@ class Board(object):
         Args:
             source (int): territory_id of source node
             target (int): territory_id of target node
-
         Returns:
             bool: True if a valid attack path exists between source and target; else False
         '''
